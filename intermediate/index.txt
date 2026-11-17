@@ -1,6 +1,6 @@
 V	270215090359Z		1000	unknown	/CN=www.lab.internal
 V	270215090941Z		1001	unknown	/CN=evil.example.com
-V	270215091043Z		1002	unknown	/CN=alice
-V	270215091054Z		1003	unknown	/CN=alice
+R	270215091043Z	261117093428Z	1002	unknown	/CN=alice
+R	270215091054Z	261117093433Z,keyCompromise	1003	unknown	/CN=alice
 V	270215091057Z		1004	unknown	/CN=bob
 V	270215091058Z		1005	unknown	/CN=billing

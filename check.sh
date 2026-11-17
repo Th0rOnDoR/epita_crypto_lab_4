@@ -92,7 +92,7 @@ if [ "$STATE" != working ]; then
   check "intermediate CRL present"                 test -f "$INTCRL"
   check "root CRL present"                         test -f "$ROOTCRL"
   check "CRLs valid, bob not revoked"              openssl verify -crl_check_all -CAfile "$ROOT" -untrusted "$INT" -CRLfile "$INTCRL" -CRLfile "$ROOTCRL" "$(cert bob)"
-  old=$(awk -F'\t' '$1 == "R" && $6 ~ /CN=alice/ {print $4}' "$L/intermediate/index.txt" 2>/dev/null | head -1)
+  old=$(awk -F'\t' '$1 == "R" && $6 ~ /CN=alice/ {print $4}' "$L/intermediate/index.txt" 2>/dev/null | tail -1)
   if [ -n "$old" ]; then ok "index.txt: an alice certificate is revoked (serial $old)"; else ko "index.txt: no revoked alice certificate"; fi
   if [ -n "$old" ] && openssl crl -in "$INTCRL" -noout -text 2>/dev/null | grep -q "Serial Number: $old"; then
     ok "serial $old is in the published CRL"

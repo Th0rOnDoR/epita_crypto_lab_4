@@ -82,3 +82,7 @@ What happens when the one person who knows it leaves? Dead
 
 The certificate is valid 90 days (default_days). Justify the number in REPORT.md, section 1.
 it's the one with put in the conf
+
+
+Important edit to every script : -> podman support
+edit to check;sh -> head to tail, allowing multiple alice certificate to be revoked
