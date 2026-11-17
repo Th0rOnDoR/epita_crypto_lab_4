@@ -83,3 +83,8 @@ search answer to those questions/weaknesses
 
 The `checks.sh` was edited to allow trash content in the CRL : i revoked two certificate from Alice (1002 & 1003).
 All scripts were edited to support podman-compose.
+
+
+## 6. IA Usage
+
+I used Qwen3.8 Flash Next, running on my hardware using the [Strata Engine](https://github.com/Niko1221/Strata). It hepled me understand why some things didn't work (debugging) as well as writing some part of the report given my ideas.
