@@ -12,7 +12,7 @@
 if [ "$1" != "--in" ]; then
   case "$1" in working|broken|fixed) ;; *) echo "usage: $0 working|broken|fixed" >&2; exit 2 ;; esac
   cd "$(dirname "$0")" || exit 2
-  if docker compose version >/dev/null 2>&1; then compose="docker compose"; else compose="docker-compose"; fi
+  if podman-compose --version >/dev/null 2>&1; then compose="podman-compose"; elif docker compose version >/dev/null 2>&1; then compose="docker compose"; else compose="docker-compose"; fi
   exec $compose run --rm --no-deps -T -v "$PWD:/lab:ro" client sh /lab/check.sh --in "$1"
 fi
 

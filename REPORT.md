@@ -7,8 +7,8 @@ Answer from **your** build: every claim points to a file in this repository or t
 Every key and certificate you created: what it is, algorithm and size, where the key lives, who can read it,
 validity, what it is used for.
 
-| Item | Key location | Readable by | Valid until | Purpose |
-|---|---|---|---|---|
+| Item                                                     | Key location                                               | Readable by                                                                                        | Valid until                                           | Purpose                                                                             |
+|----------------------------------------------------------|------------------------------------------------------------|----------------------------------------------------------------------------------------------------|-------------------------------------------------------|-------------------------------------------------------------------------------------|
 | root CA, EC P-384, self-signed, `root/certs/ca.cert.pem` | `root/private/ca.key.pem`, encrypted (AES-256, passphrase) | the `root-ca` container (no network); on the host, my user account, but only I know the passphrase | 2046-11-11, 20 years (`openssl x509 -noout -enddate`) | signs the intermediate and the root CRL, nothing else; stopped the rest of the time |
 
 **Lifetimes.** The root lasts 20 years, the intermediate 10, the server and client certificates 90 days.
@@ -19,9 +19,9 @@ Justify each number: what would a shorter or a longer lifetime cost you? Why 90 
 
 Root, intermediate, leaves, with the extensions that constrain each one (pathlen, nameConstraints, EKU, SAN).
 
-| Certificate | Subject, issuer | Constraining extensions | What they prevent |
-|---|---|---|---|
-| root CA | `C=FR, O=EPITA Lab, CN=EPITA Lab Root CA`, self-signed | `basicConstraints: critical, CA:TRUE, pathlen:1`; `keyUsage: critical, keyCertSign, cRLSign` | `pathlen:1`: below the root, one CA level only; a CA signed by the intermediate is refused. `keyUsage`: the root key signs certificates and CRLs, nothing else |
+| Certificate | Subject, issuer                                        | Constraining extensions                                                                      | What they prevent                                                                                                                                              |
+|-------------|--------------------------------------------------------|----------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| root CA     | `C=FR, O=EPITA Lab, CN=EPITA Lab Root CA`, self-signed | `basicConstraints: critical, CA:TRUE, pathlen:1`; `keyUsage: critical, keyCertSign, cRLSign` | `pathlen:1`: below the root, one CA level only; a CA signed by the intermediate is refused. `keyUsage`: the root key signs certificates and CRLs, nothing else |
 
 Read them from the certificates, not from the config:
 `openssl x509 -in root/certs/ca.cert.pem -noout -subject -issuer -ext basicConstraints,keyUsage`.
@@ -73,3 +73,12 @@ search answer to those questions/weaknesses
 - the lab root is in no trust store: how would every laptop, server and container get it?
 - the intermediate's key is not encrypted, unlike the root's. Search how it would be possible to use KMS for intermediate issuing CA.
 
+
+The root key is encrypted: you choose a passphrase.
+
+Where does it live? In my Head
+Who has it? Me
+What happens when the one person who knows it leaves? Dead
+
+The certificate is valid 90 days (default_days). Justify the number in REPORT.md, section 1.
+it's the one with put in the conf

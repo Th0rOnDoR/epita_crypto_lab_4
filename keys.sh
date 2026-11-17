@@ -12,12 +12,12 @@
 if [ "$1" != "--in" ]; then
   case "$1" in seal|open) ;; *) echo "usage: $0 seal|open" >&2; exit 2 ;; esac
   cd "$(dirname "$0")" || exit 2
-  if docker compose version >/dev/null 2>&1; then compose="docker compose"; else compose="docker-compose"; fi
+  if podman-compose --version >/dev/null 2>&1; then compose="podman-compose"; elif docker compose version >/dev/null 2>&1; then compose="docker compose"; else compose="docker-compose"; fi
   set -- "$1"
   if [ -n "$AGE_KEY_FILE" ]; then
     exec $compose run --rm --no-deps -T -v "$PWD:/lab" -v "$AGE_KEY_FILE:/run/age.key:ro" client sh /lab/keys.sh --in "$1"
   fi
-  exec $compose run --rm --no-deps -T -v "$PWD:/lab" -e AGE_KEY client sh /lab/keys.sh --in "$1"
+  exec $compose run --rm --no-deps -T -v "$PWD:/lab" -e "AGE_KEY=$AGE_KEY" client sh /lab/keys.sh --in "$1"
 fi
 
 cd /lab || exit 2

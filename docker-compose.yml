@@ -45,7 +45,7 @@ services:
     command: python -u /app/app.py
     volumes:
       - ./api:/app:ro
-    networks: [frontend, backend]
+    networks: [backend]
 
   nginx:
     image: nginx:1.29-alpine
@@ -55,7 +55,7 @@ services:
       backend: {}
     ports: ["127.0.0.1:9443:443"]
     volumes:
-      - ./nginx:/etc/nginx/conf.d:ro      # the folder, not the file: an edited file is seen at once
+      - ./nginx:/etc/nginx/conf.d:ro # the folder, not the file: an edited file is seen at once
       - ./identities/www:/etc/nginx/tls:ro
       - ./intermediate/certs:/etc/nginx/ca:ro
       - ./intermediate/crl:/etc/nginx/crl:ro

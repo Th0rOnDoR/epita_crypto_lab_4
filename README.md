@@ -23,20 +23,20 @@ nothing else to install.
 git clone git@github.com:zesk06/epita_crypto_lab_4.git && cd epita_crypto_lab_4
 git remote set-url origin git@github.com:<you>/<your-private-repo>.git   # you hand in through your repo
 docker compose up -d --build
-docker compose exec -it root-ca sh        # a shell on one machine, in /pki
+docker exec -it pki-lab_root-ca_1 sh        # a shell on one machine, in /pki
 ```
 
 `nginx` stops at once until phase 3 gives it a certificate: that is expected.
 
 ## The machines
 
-| Service | Role | Network | Sees |
-|---|---|---|---|
-| `root-ca` | offline root CA, stopped after phase 2 | none | `root/`, `exchange/` |
-| `issuing-ca` | intermediate CA: signs servers and clients | none | `intermediate/`, `exchange/`, `root/certs` |
-| `client` | workstation: creates keys and CSRs, tests | frontend | `identities/`, `exchange/`, CA certificates |
-| `nginx` | TLS front end for `www.lab.internal` | frontend, backend | its key and certificate, CA certificates, CRLs |
-| `api` | internal API (`api/app.py`) | frontend, backend | nothing |
+| Service      | Role                                       | Network           | Sees                                           |
+|--------------|--------------------------------------------|-------------------|------------------------------------------------|
+| `root-ca`    | offline root CA, stopped after phase 2     | none              | `root/`, `exchange/`                           |
+| `issuing-ca` | intermediate CA: signs servers and clients | none              | `intermediate/`, `exchange/`, `root/certs`     |
+| `client`     | workstation: creates keys and CSRs, tests  | frontend          | `identities/`, `exchange/`, CA certificates    |
+| `nginx`      | TLS front end for `www.lab.internal`       | frontend, backend | its key and certificate, CA certificates, CRLs |
+| `api`        | internal API (`api/app.py`)                | frontend, backend | nothing                                        |
 
 Open a shell on a machine with `docker compose exec -it <service> sh`. Every machine starts in `/pki`, and every
 command below is run from there. The shell is `sh`: there is no `{a,b}` expansion, write each path.
@@ -45,15 +45,15 @@ command below is run from there. The shell is `sh`: there is no `{a,b}` expansio
 
 ## Schedule
 
-| Phase | Work | Time | Tag |
-|---|---|---|---|
-| 1 | The CA config file, offline root | 35 min | |
-| 2 | Issuing CA | 25 min | |
-| 3 | Server certificate, nameConstraints | 30 min | |
-| 4 | Mutual TLS in front of the API | 55 min | `working` |
-| 5 | Break: revoke alice | 20 min | `broken` |
-| 6 | Fix: reissue alice | 20 min | `fixed` |
-| 7 | Report | 30 min | |
+| Phase | Work                                | Time   | Tag       |
+|-------|-------------------------------------|--------|-----------|
+| 1     | The CA config file, offline root    | 35 min |           |
+| 2     | Issuing CA                          | 25 min |           |
+| 3     | Server certificate, nameConstraints | 30 min |           |
+| 4     | Mutual TLS in front of the API      | 55 min | `working` |
+| 5     | Break: revoke alice                 | 20 min | `broken`  |
+| 6     | Fix: reissue alice                  | 20 min | `fixed`   |
+| 7     | Report                              | 30 min |           |
 
 ---
 
@@ -67,27 +67,27 @@ certificate it signs. Without that database there is no revocation and no CRL, a
 `openssl ca` reads everything from a configuration file: paths, rules, extensions.
 `root/openssl.cnf` and `intermediate/openssl.cnf` are skeletons. **Replace every `TODO`.** Each line has a comment.
 
-| Section | What it holds |
-|---|---|
-| `[ ca ]`, `[ CA_default ]` | where the CA lives: `database` (`index.txt`), `serial`, `crlnumber`, `new_certs_dir`, its key and certificate; `default_md` (signature hash), `default_days` (validity of what it signs), `policy`, `copy_extensions` |
-| `[ policy_* ]` | what a subject must contain: `match` (same as the CA), `supplied` (present), `optional` |
-| `[ req ]` and the subject section | used by `openssl req`; `prompt = no` takes the subject from the file |
-| extension sections (`v3_ca`, `v3_intermediate_ca`, `server_cert`, `client_cert`) | what goes into a certificate; chosen with `-extensions <section>` |
+| Section                                                                          | What it holds                                                                                                                                                                                                         |
+|----------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `[ ca ]`, `[ CA_default ]`                                                       | where the CA lives: `database` (`index.txt`), `serial`, `crlnumber`, `new_certs_dir`, its key and certificate; `default_md` (signature hash), `default_days` (validity of what it signs), `policy`, `copy_extensions` |
+| `[ policy_* ]`                                                                   | what a subject must contain: `match` (same as the CA), `supplied` (present), `optional`                                                                                                                               |
+| `[ req ]` and the subject section                                                | used by `openssl req`; `prompt = no` takes the subject from the file                                                                                                                                                  |
+| extension sections (`v3_ca`, `v3_intermediate_ca`, `server_cert`, `client_cert`) | what goes into a certificate; chosen with `-extensions <section>`                                                                                                                                                     |
 
 ### Step 1 · Complete `root/openssl.cnf`
 
 Before any command: open `root/openssl.cnf` in your editor, on your machine (the `root-ca` machine sees the same
 file as `/pki/root/openssl.cnf`). Replace its seven `TODO`s:
 
-| Where | What to decide |
-|---|---|
-| `[ CA_default ]` `default_md` | the hash used in the root's signatures, for a P-384 key |
-| `[ CA_default ]` `default_days` | how long the intermediate it signs is valid: 10 years, in days |
-| `[ root_dn ]` `commonName` | the root's name |
-| `[ v3_ca ]` `pathlen` | how many CA levels may exist below the root |
-| `[ v3_ca ]` `keyUsage` | what the root key may do |
-| `[ v3_intermediate_ca ]` `pathlen` | may the intermediate create another CA? |
-| `[ v3_intermediate_ca ]` `nameConstraints` | the only DNS names the intermediate may certify |
+| Where                                      | What to decide                                                 |
+|--------------------------------------------|----------------------------------------------------------------|
+| `[ CA_default ]` `default_md`              | the hash used in the root's signatures, for a P-384 key        |
+| `[ CA_default ]` `default_days`            | how long the intermediate it signs is valid: 10 years, in days |
+| `[ root_dn ]` `commonName`                 | the root's name                                                |
+| `[ v3_ca ]` `pathlen`                      | how many CA levels may exist below the root                    |
+| `[ v3_ca ]` `keyUsage`                     | what the root key may do                                       |
+| `[ v3_intermediate_ca ]` `pathlen`         | may the intermediate create another CA?                        |
+| `[ v3_intermediate_ca ]` `nameConstraints` | the only DNS names the intermediate may certify                |
 
 A `TODO` left in the file stops OpenSSL, and the error names it (`name=pathlen, value=TODO`).
 
@@ -119,13 +119,13 @@ person who knows it leaves? (Report, section 4.)
 
 Same work as in phase 1, for the issuing CA. Replace its six `TODO`s:
 
-| Where | What to decide |
-|---|---|
-| `[ CA_default ]` `default_md` | the hash used in its signatures of servers, clients and CRLs |
-| `[ CA_default ]` `default_days` | how long server and client certificates are valid. Short: why? |
+| Where                                                   | What to decide                                                               |
+|---------------------------------------------------------|------------------------------------------------------------------------------|
+| `[ CA_default ]` `default_md`                           | the hash used in its signatures of servers, clients and CRLs                 |
+| `[ CA_default ]` `default_days`                         | how long server and client certificates are valid. Short: why?               |
 | `[ intermediate_dn ]` `countryName`, `organizationName` | its subject: the root's `policy_strict` requires the same values as the root |
-| `[ server_cert ]` `extendedKeyUsage` | what a server certificate is for |
-| `[ client_cert ]` `extendedKeyUsage` | what a client certificate is for |
+| `[ server_cert ]` `extendedKeyUsage`                    | what a server certificate is for                                             |
+| `[ client_cert ]` `extendedKeyUsage`                    | what a client certificate is for                                             |
 
 ### Key and CSR
 
@@ -258,11 +258,11 @@ name outside its domain.
 
 ### Three identities
 
-| Identity | Subject | SAN | Role in the API |
-|---|---|---|---|
-| alice | `CN=alice` | `email:alice@lab.internal` | admin: `/admin` |
-| bob | `CN=bob` | `email:bob@lab.internal` | user: `/whoami` only |
-| billing | `CN=billing` | `URI:spiffe://lab.internal/billing` | service: `/invoices` |
+| Identity | Subject      | SAN                                 | Role in the API      |
+|----------|--------------|-------------------------------------|----------------------|
+| alice    | `CN=alice`   | `email:alice@lab.internal`          | admin: `/admin`      |
+| bob      | `CN=bob`     | `email:bob@lab.internal`            | user: `/whoami` only |
+| billing  | `CN=billing` | `URI:spiffe://lab.internal/billing` | service: `/invoices` |
 
 `billing` is a service, not a person: services authenticate with certificates too. The URI SAN is the SPIFFE
 format of service meshes, see more on [spiffe.io](https://spiffe.io/). Our nginx passes only the subject, so the
@@ -334,14 +334,14 @@ curl --cacert root/certs/ca.cert.pem --cert identities/www/www.cert.pem \
   --key identities/www/www.key.pem https://www.lab.internal/whoami
 ```
 
-| Client | Path | Expected |
-|---|---|---|
-| no certificate | `/whoami` | 400 No required SSL certificate was sent |
-| alice | `/admin` | 200 |
-| bob | `/admin` | 403 forbidden |
-| billing | `/invoices` | 200 |
-| a self-signed certificate with `CN=alice` | `/admin` | 400 The SSL certificate error |
-| the server's certificate (EKU serverAuth) | `/whoami` | 400 The SSL certificate error |
+| Client                                    | Path        | Expected                                 |
+|-------------------------------------------|-------------|------------------------------------------|
+| no certificate                            | `/whoami`   | 400 No required SSL certificate was sent |
+| alice                                     | `/admin`    | 200                                      |
+| bob                                       | `/admin`    | 403 forbidden                            |
+| billing                                   | `/invoices` | 200                                      |
+| a self-signed certificate with `CN=alice` | `/admin`    | 400 The SSL certificate error            |
+| the server's certificate (EKU serverAuth) | `/whoami`   | 400 The SSL certificate error            |
 
 ### The bypass
 
@@ -459,14 +459,14 @@ Every claim points to a file in the repository or a line in `evidence/`.
 
 Your private repository, with:
 
-| Part | Evidence |
-|---|---|
-| Three tags: `working`, `broken`, `fixed` | `evidence/<tag>.txt`: `check.sh` output, 0 failed |
-| The PKI | configuration files, certificates, CRLs, `intermediate/index.txt` |
-| The identities' keys, encrypted | `identities/*/*.key.pem.age`, for every key of `recipients.txt` |
-| No private key in clear | no `*.key.pem`, `*.key` or `private/` anywhere in `git log --all` |
-| The CI | the `check` job is green on each tag (**Actions** tab) |
-| The report | `REPORT.md`: based on **your** build (files, dates, commands), weaknesses stated clearly |
+| Part                                     | Evidence                                                                                 |
+|------------------------------------------|------------------------------------------------------------------------------------------|
+| Three tags: `working`, `broken`, `fixed` | `evidence/<tag>.txt`: `check.sh` output, 0 failed                                        |
+| The PKI                                  | configuration files, certificates, CRLs, `intermediate/index.txt`                        |
+| The identities' keys, encrypted          | `identities/*/*.key.pem.age`, for every key of `recipients.txt`                          |
+| No private key in clear                  | no `*.key.pem`, `*.key` or `private/` anywhere in `git log --all`                        |
+| The CI                                   | the `check` job is green on each tag (**Actions** tab)                                   |
+| The report                               | `REPORT.md`: based on **your** build (files, dates, commands), weaknesses stated clearly |
 
 **A private key in clear in the repository fails the lab** (Lab 2). `.gitignore` excludes `private/`, `*.key.pem`
 and `*.key`: never force them in. The CA keys are never committed, not even encrypted: they stay on their machine.
