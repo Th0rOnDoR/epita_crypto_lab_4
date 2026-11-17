@@ -69,20 +69,17 @@ what stops working or becomes unsafe, how do you recover, how long does it take?
 search answer to those questions/weaknesses
 
 - the root key's passphrase: where is it, who knows it? What if that person leaves the company?
+  - It's pretty easy : the passphrase lives in my mind. But i'm the company so i can't leave so it's not an issue. In a real case, might be better to have a very long one (not a simple "pass"), have as few people as possible use/manipulate it and store it in a bank. A different one than the one storing the certificate probably.
 - the CRL expires after 7 days: what happens on day 8, and who regenerates it?
+  - Nginx stops working i think, the CRL is "too" old and everything become untrust ?
 - the lab root is in no trust store: how would every laptop, server and container get it?
+  - It depends, you can add it. Either by giving it away and asking people to add it themself or just using ansible/GPO.
 - the intermediate's key is not encrypted, unlike the root's. Search how it would be possible to use KMS for intermediate issuing CA.
+  -
+- the certificate is valid 90 days (default_days). Justify the number in REPORT.md, section 1.
+  - it's the one with put in the conf. 7 Days would be better, but require a stronger architecture on that side, as the request flow could be way bigger in big cases like OVH. Here it's just a lab : it's an example.
 
+## 5. Importants notes
 
-The root key is encrypted: you choose a passphrase.
-
-Where does it live? In my Head
-Who has it? Me
-What happens when the one person who knows it leaves? Dead
-
-The certificate is valid 90 days (default_days). Justify the number in REPORT.md, section 1.
-it's the one with put in the conf
-
-
-Important edit to every script : -> podman support
-edit to check;sh -> head to tail, allowing multiple alice certificate to be revoked
+The `checks.sh` was edited to allow trash content in the CRL : i revoked two certificate from Alice (1002 & 1003).
+All scripts were edited to support podman-compose.
