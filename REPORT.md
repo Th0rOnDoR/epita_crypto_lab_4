@@ -4,26 +4,31 @@ Answer from **your** build: every claim points to a file in this repository or t
 
 ## 1. Inventory
 
-Every key and certificate you created: what it is, algorithm and size, where the key lives, who can read it,
-validity, what it is used for.
+| Item                                                                                                 | Key location                                                       | Readable by                                            | Valid until            | Purpose                                                   |
+|------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------|--------------------------------------------------------|------------------------|-----------------------------------------------------------|
+| Root CA `root/certs/ca.cert.pem` (P-384, self-signed)                                                | `root/private/ca.key.pem`, AES-256 encrypted, `chmod 600`, dir 700 | only me                                                | 2046-11-12 (20 y)      | signs the issuing CA and the root CRL                     |
+| Issuing CA `intermediate/certs/int.cert.pem` (P-384, serial 1000, pathlen 0)                         | `intermediate/private/int.key.pem`                                 | the `issuing-ca` container                             | 2036-11-14 (10 y)      | signs server/client certs, publishes the intermediate CRL |
+| Server cert `identities/www/www.cert.pem` (P-256, serial 1000, serverAuth, SAN `www.lab.internal`)   | `identities/www/www.key.pem`, sealed as `.age`                     | nginx only at runtime; age recipients: trainer, CI, me | 2027-02-15 (90 d)      | TLS for `www.lab.internal`                                |
+| Client certs `identities/{alice,bob,billing}/*.cert.pem` (P-256, clientAuth, SANs)                   | `identities/<u>/<u>.key.pem`, `.age` sealed                        | owners + age recipients                                | 2027-02-15 (90 d)      | mTLS identity: alice=admin, bob=user, billing=service     |
+| Revoked alice certs, serials 1002, 1003 (`R`, keyCompromise)                                         | none deployed                                                      |                                                        | revoked 2026-11-17     | evidence of the incident; in `int.crl.pem`                |
+| Cert `CN=evil.example.com` (serial 1001)                                                             | `identities/evil/evil.key.pem`                                     |                                                        | 2027-02-15             | shows nameConstraints: issued, refused at verify          |
+| CRLs: `root/crl/root.crl.pem` (180 d), `intermediate/crl/int.crl.pem` (7 d), bundle `crl-bundle.pem` |                                                                    | nginx, client                                          | per `Last/Next Update` | revocation                                                |
 
-| Item                                                     | Key location                                               | Readable by                                                                                        | Valid until                                           | Purpose                                                                             |
-|----------------------------------------------------------|------------------------------------------------------------|----------------------------------------------------------------------------------------------------|-------------------------------------------------------|-------------------------------------------------------------------------------------|
-| root CA, EC P-384, self-signed, `root/certs/ca.cert.pem` | `root/private/ca.key.pem`, encrypted (AES-256, passphrase) | the `root-ca` container (no network); on the host, my user account, but only I know the passphrase | 2046-11-11, 20 years (`openssl x509 -noout -enddate`) | signs the intermediate and the root CRL, nothing else; stopped the rest of the time |
-
-**Lifetimes.** The root lasts 20 years, the intermediate 10, the server and client certificates 90 days.
-Justify each number: what would a shorter or a longer lifetime cost you? Why 90 days for the server, and not
-1 year, or 7 days?
+**Lifetimes.**
+- Root 20 y: it is offline and barely used; rotating a trust anchor is expensive, so it is long. Cost: a leaked root key is dangerous for decades.
+- Intermediate 10 y: online but smaller blast radius than the root; when it dies only leaves under it are affected.
+- Leaves 90 d: reissue is cheap (~10 min), so short lifetimes cap the damage window of a stolen key. 1 year is too long: a stolen laptop is trusted for a year. 7 days is safer but create signing server availability issues.
 
 ## 2. Chain
 
-Root, intermediate, leaves, with the extensions that constrain each one (pathlen, nameConstraints, EKU, SAN).
+| Certificate           | Subject -> issuer                   | Constraining extensions                                                                                                                      | What they prevent                                                                                                                      |
+|-----------------------|-------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------|
+| Root CA               | `CN=EPITA Lab Root CA`, self-signed | `basicConstraints: CA:TRUE, pathlen:1` (crit), `keyUsage: keyCertSign, cRLSign` (crit)                                                       | no CA below the issuing level; the root key cannot sign anything but certs and CRLs                                                    |
+| Issuing CA            | `CN=EPITA Lab Issuing CA` <- root   | `CA:TRUE, pathlen:0` (crit), `keyUsage: digitalSignature, keyCertSign, cRLSign` (crit), `nameConstraints: permitted;DNS:lab.internal` (crit) | the issuing CA cannot delegate (no third tier); it cannot certify `evil.example.com`  nginx refuses it despite it being validly signed |
+| `www.lab.internal`    | leaf <- issuing CA                  | `basicConstraints: CA:FALSE`, `keyUsage: digitalSignature` (crit), `EKU: serverAuth` (crit), `SAN: DNS:www.lab.internal`                     | a leaf cannot act as a CA; it cannot be used as a client certificate (curl with it -> 400)                                             |
+| alice / bob / billing | leaf <- issuing CA                  | `CA:FALSE`, `keyUsage: digitalSignature` (crit), `EKU: clientAuth` (crit), `SAN: email:...` / `URI:spiffe://lab.internal/billing`            | cannot authenticate a server; role tied to CN, identity to SAN                                                                         |
 
-| Certificate | Subject, issuer                                        | Constraining extensions                                                                      | What they prevent                                                                                                                                              |
-|-------------|--------------------------------------------------------|----------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| root CA     | `C=FR, O=EPITA Lab, CN=EPITA Lab Root CA`, self-signed | `basicConstraints: critical, CA:TRUE, pathlen:1`; `keyUsage: critical, keyCertSign, cRLSign` | `pathlen:1`: below the root, one CA level only; a CA signed by the intermediate is refused. `keyUsage`: the root key signs certificates and CRLs, nothing else |
-
-Read them from the certificates, not from the config:
+Read from the certs, not the config:
 `openssl x509 -in root/certs/ca.cert.pem -noout -subject -issuer -ext basicConstraints,keyUsage`.
 
 ## 3. Key compromise
@@ -31,38 +36,33 @@ Read them from the certificates, not from the config:
 For the server key, a client key, the intermediate key and the root key: how would you notice,
 what stops working or becomes unsafe, how do you recover, how long does it take?
 
-### Server key (`identities/www/www.key.pem`)
+### Server key
 
-- How you notice: nothing in this build detects it: no monitoring, no alert. You learn it from outside: the key
-  found in a backup, a leak, an intrusion on the host.
-- What becomes unsafe: whoever can redirect traffic (DNS, same network) can pose as `www.lab.internal`: clients send
-  it their requests and trust its answers. It still cannot reach the API as alice: it has no client key. Past
-  sessions stay unreadable: TLS 1.3 key exchange is ephemeral (forward secrecy). Nothing stops working.
-- Recovery: new key and CSR in `client`, sign in `issuing-ca`, copy to `identities/www/`, restart nginx. Revoke the
-  old serial and publish the CRL, but the clients do not check the server's revocation (`curl` reads no CRL by
-  default): the old certificate stays accepted.
-- How long: 10 minutes to reissue; the stolen certificate stays usable until it expires, at most 90 days.
+- **Notice:** nothing detects it.
+- **Unsafe:** anyone with the key can pose as `www.lab.internal` on the internal network (DNS redirect). Clients trust it, but it still cannot impersonate a client (no clientAuth). Past sessions stay unreadable: TLS 1.3 has forward secrecy.
+- **Recover:** new key + CSR -> sign in issuing-ca. Revoking the old serial works only for clients that check the CRL;
+- **Time:** ~10 min to reissue; the stolen cert is usable until revoked or expired, at most 90 days.
 
 ### Client key
 
-- How you notice:
-- What becomes unsafe:
-- Recovery:
-- How long:
+- **Notice:** unusual API calls in `docker compose logs -f api`, or a successful impersonation report. Same gap as the server: no detection, only logs.
+- **Unsafe:** key + cert = full access to the API with that role (alice can reach `/admin`).
+- **Recover:** revoke serial (`openssl ca -revoke`), regenerate `int.crl.pem`, rebuild `crl-bundle.pem`, restart nginx -> nginx rejects the old cert (400). Then new key + CSR + sign + copy.
+- **Time:** ~10 min. This is `broken` -> `fixed` cycle.
 
 ### Intermediate key
 
-- How you notice:
-- What becomes unsafe:
-- Recovery:
-- How long:
+- **Notice:** certificates appearing in `intermediate/index.txt` that nobody requested; forged certs accepted by nginx.
+- **Unsafe:** an attacker can mint any cert within the nameConstraints : impersonate the server or every client. All 6 issued leaves are compromised.
+- **Recover:** the root revokes the issuing CA itself (serial 1000) in its CRL; generate a new intermediate key and CSR, sign it with the root, redistribute `ca-chain.pem`, re-enroll every identity. Trust stores must get the new chain.
+- **Time:** hours to a day; every leaf must be reissued.
 
 ### Root key
 
-- How you notice:
-- What becomes unsafe:
-- Recovery:
-- How long:
+- **Notice:** same as above, but at the anchor: a new "root-signed" CA appearing anywhere.
+- **Unsafe:** total: the attacker can build their own issuing CA and forge everything; the whole chain of trust is dead.
+- **Recover:** there is no fix, only a rebuild: new root, new intermediate, reissue everything, replace the root cert in every trust store, laptop, and container.
+- **Time:** days. That is why the root is offline, stopped after phase 2, encrypted, with the passphrase held by one person.
 
 ## 4. Operational gaps
 
@@ -75,7 +75,7 @@ search answer to those questions/weaknesses
 - the lab root is in no trust store: how would every laptop, server and container get it?
   - It depends, you can add it. Either by giving it away and asking people to add it themself or just using ansible/GPO.
 - the intermediate's key is not encrypted, unlike the root's. Search how it would be possible to use KMS for intermediate issuing CA.
-  -
+  - Using an HSM : API calls to sign a certificate, nothing more, nothing less : completely separate server, with firewall etc...
 - the certificate is valid 90 days (default_days). Justify the number in REPORT.md, section 1.
   - it's the one with put in the conf. 7 Days would be better, but require a stronger architecture on that side, as the request flow could be way bigger in big cases like OVH. Here it's just a lab : it's an example.
 
